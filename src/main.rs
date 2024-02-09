@@ -1,4 +1,4 @@
-use raylib::prelude::*;
+use raylib::{ffi::HideCursor, prelude::*};
 
 const BALL_GROW_RATE: f32 = 5.;
 const MAX_SPEED: i32 = 400;
@@ -62,6 +62,7 @@ impl GruvBox {
     }
 }
 
+#[derive(Clone)]
 struct Ball {
     position: Vector2,
     velocity: Vector2,
@@ -83,11 +84,13 @@ impl Ball {
 fn main() {
     let (mut rl, thread) = raylib::init()
         .size(800, 450)
-        .title("raylib [core] example - basic window")
+        .title("raylib rust ball game")
         .msaa_4x()
-        .undecorated()
-        .transparent()
         .build();
+
+    unsafe {
+        HideCursor();
+    }
 
     let w = rl.get_screen_width() as f32;
     let h = rl.get_screen_height() as f32;
@@ -111,9 +114,35 @@ fn main() {
         d.clear_background(Color::new(0, 0, 0, 0));
         d.draw_rectangle_rounded(Rectangle::new(0., 0., w, h), 0.025, 10, window_color);
 
+        let cc: String = std::env::var("CIRCLE_COLLISION").unwrap_or("false".to_string());
+        if cc == "true" {
+            let balls_clone = balls.clone();
+            balls = balls
+                .into_iter()
+                .map(|mut ball| {
+                    for other_ball in balls_clone.iter() {
+                        if ball.position == other_ball.position {
+                            continue;
+                        }
+                        if check_collision_circles(
+                            ball.position,
+                            ball.radius,
+                            other_ball.position,
+                            other_ball.radius,
+                        ) {
+                            ball.velocity = other_ball.velocity;
+                        }
+                    }
+                    ball
+                })
+                .collect();
+        }
+
         balls = balls
             .into_iter()
             .map(|mut ball| {
+                let shadow_position = Vector2::new(ball.position.x + 2., ball.position.y + 2.);
+                d.draw_circle_v(shadow_position, ball.radius, Color::BLACK.fade(0.25));
                 d.draw_circle_v(ball.position, ball.radius, ball.color);
                 let mut new_position = ball.position + ball.velocity * delta;
                 if new_position.x - ball.radius < 0. || new_position.x + ball.radius > w {
@@ -125,11 +154,15 @@ fn main() {
                     ball.radius += BALL_GROW_RATE;
                 }
 
+                if ball.radius > h {
+                    panic!("Ball is too big!");
+                }
+
                 if d.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
                     let mouse = d.get_mouse_position();
                     if ball.position.distance_to(mouse) < ball.radius {
                         ball.velocity = (ball.position - mouse).normalized() * MAX_SPEED as f32;
-                        ball.radius -= 5.;
+                        ball.radius -= 10.;
                     }
                 }
 
@@ -166,6 +199,22 @@ fn main() {
         {
             break;
         }
+
+        let mouse = d.get_mouse_position();
+        d.draw_text(
+            "+",
+            mouse.x as i32 - 7,
+            mouse.y as i32 - 7,
+            30,
+            Color::BLACK.fade(0.25),
+        );
+        d.draw_text(
+            "+",
+            mouse.x as i32 - 7,
+            mouse.y as i32 - 7,
+            20,
+            GruvBox::FG.get_color(),
+        );
     }
 }
 
